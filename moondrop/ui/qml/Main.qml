@@ -6,7 +6,7 @@ import QtQuick.Effects
 ApplicationWindow {
     id: root
     width: 460
-    height: 812
+    height: 860
     visible: true
     color: "transparent"
     title: "Dawn Pro"
@@ -290,381 +290,393 @@ ApplicationWindow {
             currentIndex: root.tabIndex
 
             // ---- control page ------------------------------------------
-            ColumnLayout {
-                spacing: 14
+            Flickable {
+                contentWidth: width
+                contentHeight: controlColumn.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                // Now playing ----------------------------------------------------
-                Card {
-                    Layout.fillWidth: true
-                    implicitHeight: nowPlayingRow.implicitHeight + 28
+                ColumnLayout {
+                    id: controlColumn
+                    width: parent.width
+                    spacing: 14
 
-                    RowLayout {
-                        id: nowPlayingRow
-                        anchors.fill: parent
-                        anchors.margins: 14
-                        spacing: 14
+                    // Now playing ----------------------------------------------------
+                    Card {
+                        Layout.fillWidth: true
+                        implicitHeight: nowPlayingRow.implicitHeight + 28
 
-                        Item {
-                            Layout.alignment: Qt.AlignTop
-                            width: 96; height: 96
+                        RowLayout {
+                            id: nowPlayingRow
+                            anchors.fill: parent
+                            anchors.margins: 14
+                            spacing: 14
 
-                            Rectangle {
-                                id: artFrame
-                                anchors.fill: parent
-                                radius: 12
-                                color: Qt.rgba(1, 1, 1, 0.05)
-                                clip: true
+                            Item {
+                                Layout.alignment: Qt.AlignTop
+                                width: 96; height: 96
 
-                                Image {
-                                    id: art
+                                Rectangle {
+                                    id: artFrame
                                     anchors.fill: parent
-                                    source: controller.artUri
-                                    fillMode: Image.PreserveAspectCrop
-                                    asynchronous: true
-                                    visible: controller.artUri !== ""
+                                    radius: 12
+                                    color: Qt.rgba(1, 1, 1, 0.05)
+                                    clip: true
+
+                                    Image {
+                                        id: art
+                                        anchors.fill: parent
+                                        source: controller.artUri
+                                        fillMode: Image.PreserveAspectCrop
+                                        asynchronous: true
+                                        visible: controller.artUri !== ""
+                                    }
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        visible: controller.artUri === ""
+                                        text: "♪"
+                                        color: root.faint
+                                        font.pixelSize: 30
+                                    }
                                 }
 
-                                Text {
-                                    anchors.centerIn: parent
-                                    visible: controller.artUri === ""
-                                    text: "♪"
-                                    color: root.faint
-                                    font.pixelSize: 30
+                                // Breathing ring while audio is actually playing.
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 12
+                                    color: "transparent"
+                                    border.width: 2
+                                    border.color: root.accentB
+                                    opacity: controller.trackPlaying ? 0.20 + controller.level * 0.7 : 0
+                                    Behavior on opacity { NumberAnimation { duration: 90 } }
                                 }
                             }
 
-                            // Breathing ring while audio is actually playing.
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: 12
-                                color: "transparent"
-                                border.width: 2
-                                border.color: root.accentB
-                                opacity: controller.trackPlaying ? 0.20 + controller.level * 0.7 : 0
-                                Behavior on opacity { NumberAnimation { duration: 90 } }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                spacing: 3
+
+                                RowLayout {
+                                    spacing: 6
+                                    Rectangle {
+                                        width: 6; height: 6; radius: 3
+                                        color: controller.trackPlaying ? root.good : root.faint
+                                    }
+                                    Label {
+                                        text: controller.trackApp !== "" ? controller.trackApp.toUpperCase() : "NOTHING PLAYING"
+                                        color: root.faint
+                                        font.pixelSize: 10
+                                        font.letterSpacing: 1.6
+                                        font.weight: Font.DemiBold
+                                    }
+                                }
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: controller.trackTitle !== "" ? controller.trackTitle : "—"
+                                    font.pixelSize: 16
+                                    font.weight: Font.DemiBold
+                                    elide: Text.ElideRight
+                                    maximumLineCount: 2
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: controller.trackArtist
+                                    color: root.muted
+                                    font.pixelSize: 13
+                                    elide: Text.ElideRight
+                                    visible: text !== ""
+                                }
+
+                                Item { Layout.fillHeight: true }
+
+                                // Output level -----------------------------------------
+                                Item {
+                                    Layout.fillWidth: true
+                                    implicitHeight: 6
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        radius: 3
+                                        color: Qt.rgba(1, 1, 1, 0.07)
+                                    }
+                                    Rectangle {
+                                        height: parent.height
+                                        width: parent.width * Math.min(1, controller.level)
+                                        radius: 3
+                                        gradient: Gradient {
+                                            orientation: Gradient.Horizontal
+                                            GradientStop { position: 0.0; color: root.accentA }
+                                            GradientStop { position: 1.0; color: root.accentB }
+                                        }
+                                        Behavior on width { NumberAnimation { duration: 55 } }
+                                    }
+                                    Rectangle {
+                                        width: 2
+                                        height: parent.height
+                                        radius: 1
+                                        color: root.text
+                                        opacity: 0.75
+                                        x: Math.min(parent.width - width, parent.width * controller.levelPeak)
+                                        visible: controller.levelPeak > 0.01
+                                    }
+                                }
                             }
                         }
+                    }
+
+                    // Stream quality -------------------------------------------------
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        visible: controller.formatSummary !== ""
+
+                        Repeater {
+                            model: controller.formatSummary.split(" · ")
+                            delegate: Chip {
+                                required property string modelData
+                                label: modelData
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                    }
+
+                    // Volume ---------------------------------------------------------
+                    Card {
+                        Layout.fillWidth: true
+                        implicitHeight: volumeCol.implicitHeight + 32
 
                         ColumnLayout {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            spacing: 3
+                            id: volumeCol
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            spacing: 8
+
+                            SectionTitle { text: "VOLUME" }
 
                             RowLayout {
-                                spacing: 6
-                                Rectangle {
-                                    width: 6; height: 6; radius: 3
-                                    color: controller.trackPlaying ? root.good : root.faint
+                                Layout.fillWidth: true
+                                spacing: 4
+                                Label {
+                                    text: volumeSlider.pressed
+                                          ? Math.round(volumeSlider.value / controller.volumeMax * 100)
+                                          : controller.volumePercent
+                                    font.pixelSize: 34
+                                    font.weight: Font.Light
                                 }
                                 Label {
-                                    text: controller.trackApp !== "" ? controller.trackApp.toUpperCase() : "NOTHING PLAYING"
+                                    Layout.alignment: Qt.AlignBottom
+                                    Layout.bottomMargin: 6
+                                    text: "%"
+                                    color: root.muted
+                                    font.pixelSize: 14
+                                }
+                                Item { Layout.fillWidth: true }
+                            }
+
+                            Slider {
+                                id: volumeSlider
+                                Layout.fillWidth: true
+                                from: 0
+                                to: controller.volumeMax
+                                stepSize: 1
+                                snapMode: Slider.SnapAlways
+                                enabled: controller.connected
+
+                                // Track the device, but not while the user has hold
+                                // of the handle -- otherwise a poll mid-drag would
+                                // yank it back.
+                                Binding on value {
+                                    value: controller.volume
+                                    when: !volumeSlider.pressed
+                                    restoreMode: Binding.RestoreBindingOrValue
+                                }
+
+                                // Dragging only moves the handle. The device is
+                                // written once, on release, with the value actually
+                                // chosen -- a write costs a HID round trip plus a
+                                // verifying read, far slower than the drag emits
+                                // steps.
+                                onPressedChanged: {
+                                    if (!pressed)
+                                        controller.setVolume(Math.round(value))
+                                }
+
+                                // Wheel and arrow keys are discrete, so they commit
+                                // as they happen.
+                                Keys.onLeftPressed: controller.nudgeVolume(-1)
+                                Keys.onRightPressed: controller.nudgeVolume(1)
+
+                                background: Rectangle {
+                                    x: volumeSlider.leftPadding
+                                    y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
+                                    width: volumeSlider.availableWidth
+                                    height: 6
+                                    radius: 3
+                                    color: Qt.rgba(1, 1, 1, 0.08)
+
+                                    Rectangle {
+                                        width: volumeSlider.visualPosition * parent.width
+                                        height: parent.height
+                                        radius: 3
+                                        gradient: Gradient {
+                                            orientation: Gradient.Horizontal
+                                            GradientStop { position: 0.0; color: root.accentA }
+                                            GradientStop { position: 1.0; color: root.accentB }
+                                        }
+                                    }
+                                }
+
+                                handle: Rectangle {
+                                    x: volumeSlider.leftPadding + volumeSlider.visualPosition
+                                       * (volumeSlider.availableWidth - width)
+                                    y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
+                                    width: 18; height: 18; radius: 9
+                                    color: "#FFFFFF"
+                                    scale: volumeSlider.pressed ? 1.15 : 1.0
+                                    Behavior on scale { NumberAnimation { duration: 90 } }
+
+                                    Rectangle {
+                                        anchors.centerIn: parent
+                                        width: 28; height: 28; radius: 14
+                                        color: root.accentB
+                                        opacity: volumeSlider.pressed ? 0.25 : 0
+                                        Behavior on opacity { NumberAnimation { duration: 120 } }
+                                    }
+                                }
+
+                                WheelHandler {
+                                    onWheel: (event) => controller.nudgeVolume(event.angleDelta.y > 0 ? 1 : -1)
+                                }
+                            }
+                        }
+                    }
+
+                    // Gain -----------------------------------------------------------
+                    Card {
+                        Layout.fillWidth: true
+                        implicitHeight: gainCol.implicitHeight + 32
+
+                        ColumnLayout {
+                            id: gainCol
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            spacing: 10
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                SectionTitle { text: "GAIN" }
+                                Item { Layout.fillWidth: true }
+                                Label {
+                                    text: controller.gain === 1 ? "More output, more hiss" : "Quieter, lowest noise"
                                     color: root.faint
-                                    font.pixelSize: 10
-                                    font.letterSpacing: 1.6
-                                    font.weight: Font.DemiBold
+                                    font.pixelSize: 11
                                 }
                             }
 
-                            Label {
+                            RowLayout {
                                 Layout.fillWidth: true
-                                text: controller.trackTitle !== "" ? controller.trackTitle : "—"
-                                font.pixelSize: 16
-                                font.weight: Font.DemiBold
-                                elide: Text.ElideRight
-                                maximumLineCount: 2
-                                wrapMode: Text.WordWrap
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: controller.trackArtist
-                                color: root.muted
-                                font.pixelSize: 13
-                                elide: Text.ElideRight
-                                visible: text !== ""
-                            }
-
-                            Item { Layout.fillHeight: true }
-
-                            // Output level -----------------------------------------
-                            Item {
-                                Layout.fillWidth: true
-                                implicitHeight: 6
-
-                                Rectangle {
-                                    anchors.fill: parent
-                                    radius: 3
-                                    color: Qt.rgba(1, 1, 1, 0.07)
-                                }
-                                Rectangle {
-                                    height: parent.height
-                                    width: parent.width * Math.min(1, controller.level)
-                                    radius: 3
-                                    gradient: Gradient {
-                                        orientation: Gradient.Horizontal
-                                        GradientStop { position: 0.0; color: root.accentA }
-                                        GradientStop { position: 1.0; color: root.accentB }
-                                    }
-                                    Behavior on width { NumberAnimation { duration: 55 } }
-                                }
-                                Rectangle {
-                                    width: 2
-                                    height: parent.height
-                                    radius: 1
-                                    color: root.text
-                                    opacity: 0.75
-                                    x: Math.min(parent.width - width, parent.width * controller.levelPeak)
-                                    visible: controller.levelPeak > 0.01
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Stream quality -------------------------------------------------
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    visible: controller.formatSummary !== ""
-
-                    Repeater {
-                        model: controller.formatSummary.split(" · ")
-                        delegate: Chip {
-                            required property string modelData
-                            label: modelData
-                        }
-                    }
-                    Item { Layout.fillWidth: true }
-                }
-
-                // Volume ---------------------------------------------------------
-                Card {
-                    Layout.fillWidth: true
-                    implicitHeight: volumeCol.implicitHeight + 32
-
-                    ColumnLayout {
-                        id: volumeCol
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 8
-
-                        SectionTitle { text: "VOLUME" }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-                            Label {
-                                text: volumeSlider.pressed
-                                      ? Math.round(volumeSlider.value / controller.volumeMax * 100)
-                                      : controller.volumePercent
-                                font.pixelSize: 34
-                                font.weight: Font.Light
-                            }
-                            Label {
-                                Layout.alignment: Qt.AlignBottom
-                                Layout.bottomMargin: 6
-                                text: "%"
-                                color: root.muted
-                                font.pixelSize: 14
-                            }
-                            Item { Layout.fillWidth: true }
-                        }
-
-                        Slider {
-                            id: volumeSlider
-                            Layout.fillWidth: true
-                            from: 0
-                            to: controller.volumeMax
-                            stepSize: 1
-                            snapMode: Slider.SnapAlways
-                            enabled: controller.connected
-
-                            // Track the device, but not while the user has hold
-                            // of the handle -- otherwise a poll mid-drag would
-                            // yank it back.
-                            Binding on value {
-                                value: controller.volume
-                                when: !volumeSlider.pressed
-                                restoreMode: Binding.RestoreBindingOrValue
-                            }
-
-                            // Dragging only moves the handle. The device is
-                            // written once, on release, with the value actually
-                            // chosen -- a write costs a HID round trip plus a
-                            // verifying read, far slower than the drag emits
-                            // steps.
-                            onPressedChanged: {
-                                if (!pressed)
-                                    controller.setVolume(Math.round(value))
-                            }
-
-                            // Wheel and arrow keys are discrete, so they commit
-                            // as they happen.
-                            Keys.onLeftPressed: controller.nudgeVolume(-1)
-                            Keys.onRightPressed: controller.nudgeVolume(1)
-
-                            background: Rectangle {
-                                x: volumeSlider.leftPadding
-                                y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
-                                width: volumeSlider.availableWidth
-                                height: 6
-                                radius: 3
-                                color: Qt.rgba(1, 1, 1, 0.08)
-
-                                Rectangle {
-                                    width: volumeSlider.visualPosition * parent.width
-                                    height: parent.height
-                                    radius: 3
-                                    gradient: Gradient {
-                                        orientation: Gradient.Horizontal
-                                        GradientStop { position: 0.0; color: root.accentA }
-                                        GradientStop { position: 1.0; color: root.accentB }
+                                spacing: 8
+                                Repeater {
+                                    model: [{ name: "Low", value: 0 }, { name: "High", value: 1 }]
+                                    delegate: Pill {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        label: modelData.name
+                                        selected: controller.gain === modelData.value
+                                        enabled: controller.connected
+                                        onClicked: controller.setGain(modelData.value)
                                     }
                                 }
                             }
-
-                            handle: Rectangle {
-                                x: volumeSlider.leftPadding + volumeSlider.visualPosition
-                                   * (volumeSlider.availableWidth - width)
-                                y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
-                                width: 18; height: 18; radius: 9
-                                color: "#FFFFFF"
-                                scale: volumeSlider.pressed ? 1.15 : 1.0
-                                Behavior on scale { NumberAnimation { duration: 90 } }
-
-                                Rectangle {
-                                    anchors.centerIn: parent
-                                    width: 28; height: 28; radius: 14
-                                    color: root.accentB
-                                    opacity: volumeSlider.pressed ? 0.25 : 0
-                                    Behavior on opacity { NumberAnimation { duration: 120 } }
-                                }
-                            }
-
-                            WheelHandler {
-                                onWheel: (event) => controller.nudgeVolume(event.angleDelta.y > 0 ? 1 : -1)
-                            }
                         }
                     }
-                }
 
-                // Gain -----------------------------------------------------------
-                Card {
-                    Layout.fillWidth: true
-                    implicitHeight: gainCol.implicitHeight + 32
+                    // Filter ---------------------------------------------------------
+                    Card {
+                        Layout.fillWidth: true
+                        implicitHeight: filterCol.implicitHeight + 32
 
-                    ColumnLayout {
-                        id: gainCol
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 10
+                        ColumnLayout {
+                            id: filterCol
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            spacing: 10
 
-                        RowLayout {
-                            Layout.fillWidth: true
-                            SectionTitle { text: "GAIN" }
-                            Item { Layout.fillWidth: true }
-                            Label {
-                                text: controller.gain === 1 ? "More output, more hiss" : "Quieter, lowest noise"
-                                color: root.faint
-                                font.pixelSize: 11
-                            }
-                        }
+                            SectionTitle { text: "RECONSTRUCTION FILTER" }
 
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            Repeater {
-                                model: [{ name: "Low", value: 0 }, { name: "High", value: 1 }]
-                                delegate: Pill {
-                                    required property var modelData
-                                    Layout.fillWidth: true
-                                    label: modelData.name
-                                    selected: controller.gain === modelData.value
-                                    enabled: controller.connected
-                                    onClicked: controller.setGain(modelData.value)
+                            GridLayout {
+                                Layout.fillWidth: true
+                                columns: 2
+                                rowSpacing: 8
+                                columnSpacing: 8
+
+                                Repeater {
+                                    model: [
+                                        { name: "Fast · Low latency", value: 0 },
+                                        { name: "Fast · Phase comp.", value: 1 },
+                                        { name: "Slow · Low latency", value: 2 },
+                                        { name: "Slow · Phase comp.", value: 3 },
+                                        { name: "Non-oversampling", value: 4 }
+                                    ]
+                                    delegate: Pill {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        Layout.columnSpan: modelData.value === 4 ? 2 : 1
+                                        label: modelData.name
+                                        selected: controller.filterIndex === modelData.value
+                                        enabled: controller.connected
+                                        onClicked: controller.setFilter(modelData.value)
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                // Filter ---------------------------------------------------------
-                Card {
-                    Layout.fillWidth: true
-                    implicitHeight: filterCol.implicitHeight + 32
+                    // LED ------------------------------------------------------------
+                    Card {
+                        Layout.fillWidth: true
+                        implicitHeight: ledCol.implicitHeight + 32
 
-                    ColumnLayout {
-                        id: filterCol
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 10
+                        ColumnLayout {
+                            id: ledCol
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            spacing: 10
 
-                        SectionTitle { text: "RECONSTRUCTION FILTER" }
+                            SectionTitle { text: "LED" }
 
-                        GridLayout {
-                            Layout.fillWidth: true
-                            columns: 2
-                            rowSpacing: 8
-                            columnSpacing: 8
-
-                            Repeater {
-                                model: [
-                                    { name: "Fast · Low latency", value: 0 },
-                                    { name: "Fast · Phase comp.", value: 1 },
-                                    { name: "Slow · Low latency", value: 2 },
-                                    { name: "Slow · Phase comp.", value: 3 },
-                                    { name: "Non-oversampling", value: 4 }
-                                ]
-                                delegate: Pill {
-                                    required property var modelData
-                                    Layout.fillWidth: true
-                                    Layout.columnSpan: modelData.value === 4 ? 2 : 1
-                                    label: modelData.name
-                                    selected: controller.filterIndex === modelData.value
-                                    enabled: controller.connected
-                                    onClicked: controller.setFilter(modelData.value)
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Repeater {
+                                    model: [
+                                        { name: "On", value: 0 },
+                                        { name: "Temporary", value: 1 },
+                                        { name: "Off", value: 2 }
+                                    ]
+                                    delegate: Pill {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        label: modelData.name
+                                        selected: controller.led === modelData.value
+                                        enabled: controller.connected
+                                        onClicked: controller.setLed(modelData.value)
+                                    }
                                 }
                             }
                         }
                     }
+
+                    // Breathing room so the last card does not sit flush
+                    // against the bottom edge.
+                    Item { implicitHeight: 22 }
                 }
-
-                // LED ------------------------------------------------------------
-                Card {
-                    Layout.fillWidth: true
-                    implicitHeight: ledCol.implicitHeight + 32
-
-                    ColumnLayout {
-                        id: ledCol
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 10
-
-                        SectionTitle { text: "LED" }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            Repeater {
-                                model: [
-                                    { name: "On", value: 0 },
-                                    { name: "Temporary", value: 1 },
-                                    { name: "Off", value: 2 }
-                                ]
-                                delegate: Pill {
-                                    required property var modelData
-                                    Layout.fillWidth: true
-                                    label: modelData.name
-                                    selected: controller.led === modelData.value
-                                    enabled: controller.connected
-                                    onClicked: controller.setLed(modelData.value)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Item { Layout.fillHeight: true }
             }
 
             // ---- device info page --------------------------------------
@@ -716,7 +728,7 @@ ApplicationWindow {
                                 color: root.cardEdge
                             }
 
-                            SectionTitle { text: "PUBLISHED SPECIFICATIONS" }
+                            SectionTitle { text: "SPECIFICATIONS" }
 
                             Label {
                                 Layout.fillWidth: true
