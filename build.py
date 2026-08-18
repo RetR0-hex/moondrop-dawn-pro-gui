@@ -36,6 +36,7 @@ COMMON = [
 # follows anyway, so they have to be excluded explicitly.
 CLI_EXTRA = [
     "--console",
+    "--icon", str(ROOT / "packaging" / "icon.ico"),
     "--exclude-module", "PySide6",
     "--exclude-module", "shiboken6",
     "--exclude-module", "winsdk",

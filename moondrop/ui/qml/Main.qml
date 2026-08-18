@@ -39,7 +39,7 @@ ApplicationWindow {
     component Label: Text {
         color: root.text
         font.family: root.uiFont
-        renderType: Text.NativeRendering
+        renderType: Text.QtRendering
     }
 
     component SectionTitle: Text {
@@ -48,7 +48,7 @@ ApplicationWindow {
         font.pixelSize: 11
         font.letterSpacing: 1.4
         font.weight: Font.DemiBold
-        renderType: Text.NativeRendering
+        renderType: Text.QtRendering
     }
 
     // A pill button that fills with the accent gradient when selected.
@@ -83,13 +83,39 @@ ApplicationWindow {
             font.family: root.uiFont
             font.pixelSize: 12
             font.weight: pill.selected ? Font.DemiBold : Font.Normal
-            renderType: Text.NativeRendering
+            renderType: Text.QtRendering
         }
 
         HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor; enabled: pill.enabled }
         TapHandler { enabled: pill.enabled; onTapped: pill.clicked() }
 
         Behavior on color { ColorAnimation { duration: 120 } }
+    }
+
+    component InfoRow: RowLayout {
+        id: row
+        property string label: ""
+        property string value: ""
+        // Only hex dumps get the monospace treatment; prose values wrap on
+        // spaces so units and figures stay intact.
+        readonly property bool isHex: /^[0-9A-F ]+$/.test(value)
+
+        spacing: 14
+
+        Label {
+            text: row.label
+            color: root.muted
+            font.pixelSize: 11
+        }
+        Item { Layout.fillWidth: true }
+        Label {
+            Layout.maximumWidth: 264
+            text: row.value
+            font.pixelSize: 11
+            font.family: row.isHex ? "Consolas" : root.uiFont
+            horizontalAlignment: Text.AlignRight
+            wrapMode: row.isHex ? Text.WrapAnywhere : Text.WordWrap
+        }
     }
 
     component Chip: Rectangle {
@@ -108,7 +134,7 @@ ApplicationWindow {
             font.family: root.uiFont
             font.pixelSize: 11
             font.weight: Font.DemiBold
-            renderType: Text.NativeRendering
+            renderType: Text.QtRendering
         }
     }
 
@@ -163,6 +189,7 @@ ApplicationWindow {
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 18
+        anchors.bottomMargin: 22
         spacing: 14
 
         // Title bar ------------------------------------------------------
@@ -226,7 +253,7 @@ ApplicationWindow {
                             text: modelData.glyph
                             color: root.muted
                             font.pixelSize: 11
-                            renderType: Text.NativeRendering
+                            renderType: Text.QtRendering
                         }
                         HoverHandler { id: btnHover; cursorShape: Qt.PointingHandCursor }
                         TapHandler {
@@ -427,7 +454,9 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             spacing: 4
                             Label {
-                                text: controller.volumePercent
+                                text: volumeSlider.pressed
+                                      ? Math.round(volumeSlider.value / controller.volumeMax * 100)
+                                      : controller.volumePercent
                                 font.pixelSize: 34
                                 font.weight: Font.Light
                             }
@@ -448,10 +477,29 @@ ApplicationWindow {
                             to: controller.volumeMax
                             stepSize: 1
                             snapMode: Slider.SnapAlways
-                            value: controller.volume
                             enabled: controller.connected
 
-                            onMoved: controller.setVolume(Math.round(value))
+                            // Track the device, but not while the user has hold
+                            // of the handle -- otherwise a poll mid-drag would
+                            // yank it back.
+                            Binding on value {
+                                value: controller.volume
+                                when: !volumeSlider.pressed
+                                restoreMode: Binding.RestoreBindingOrValue
+                            }
+
+                            // Dragging only moves the handle. The device is
+                            // written once, on release, with the value actually
+                            // chosen -- a write costs a HID round trip plus a
+                            // verifying read, far slower than the drag emits
+                            // steps.
+                            onPressedChanged: {
+                                if (!pressed)
+                                    controller.setVolume(Math.round(value))
+                            }
+
+                            // Wheel and arrow keys are discrete, so they commit
+                            // as they happen.
                             Keys.onLeftPressed: controller.nudgeVolume(-1)
                             Keys.onRightPressed: controller.nudgeVolume(1)
 
@@ -632,26 +680,62 @@ ApplicationWindow {
                     width: parent.width
                     spacing: 14
 
+                    // The device and what it claims to do, in one block.
                     Card {
                         Layout.fillWidth: true
-                        implicitHeight: 196
+                        implicitHeight: heroColumn.implicitHeight + 32
 
-                        DawnProArt {
-                            anchors.centerIn: parent
-                            width: parent.width - 32
-                            height: 172
-                            accent: root.accentB
-                            ledOn: controller.led === 0
-                            visible: controller.productImage === ""
-                        }
+                        ColumnLayout {
+                            id: heroColumn
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            spacing: 12
 
-                        Image {
-                            anchors.centerIn: parent
-                            width: parent.width - 32
-                            height: 172
-                            fillMode: Image.PreserveAspectFit
-                            source: controller.productImage
-                            visible: controller.productImage !== ""
+                            Item {
+                                Layout.fillWidth: true
+                                implicitHeight: 172
+
+                                DawnProArt {
+                                    anchors.fill: parent
+                                    accent: root.accentB
+                                    ledOn: controller.led === 0
+                                    visible: controller.productImage === ""
+                                }
+
+                                Image {
+                                    anchors.fill: parent
+                                    fillMode: Image.PreserveAspectFit
+                                    source: controller.productImage
+                                    visible: controller.productImage !== ""
+                                }
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: 1
+                                color: root.cardEdge
+                            }
+
+                            SectionTitle { text: "PUBLISHED SPECIFICATIONS" }
+
+                            Label {
+                                Layout.fillWidth: true
+                                Layout.topMargin: -7
+                                text: "MOONDROP figures · not measured here"
+                                color: root.faint
+                                font.pixelSize: 10
+                                font.italic: true
+                            }
+
+                            Repeater {
+                                model: controller.specRows
+                                delegate: InfoRow {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    label: modelData.label
+                                    value: modelData.value
+                                }
+                            }
                         }
                     }
 
@@ -682,38 +766,20 @@ ApplicationWindow {
 
                                 Repeater {
                                     model: groupCard.modelData.rows
-                                    delegate: RowLayout {
+                                    delegate: InfoRow {
                                         required property var modelData
                                         Layout.fillWidth: true
-                                        spacing: 14
-
-                                        Label {
-                                            text: modelData.label
-                                            color: root.muted
-                                            font.pixelSize: 11
-                                        }
-                                        Item { Layout.fillWidth: true }
-                                        Label {
-                                            // Only hex dumps get the monospace
-                                            // treatment; prose values wrap on
-                                            // spaces so units stay intact.
-                                            readonly property bool isHex:
-                                                /^[0-9A-F ]+$/.test(modelData.value)
-
-                                            Layout.maximumWidth: 264
-                                            text: modelData.value
-                                            font.pixelSize: 11
-                                            font.family: isHex ? "Consolas" : root.uiFont
-                                            horizontalAlignment: Text.AlignRight
-                                            wrapMode: isHex ? Text.WrapAnywhere : Text.WordWrap
-                                        }
+                                        label: modelData.label
+                                        value: modelData.value
                                     }
                                 }
                             }
                         }
                     }
 
-                    Item { implicitHeight: 4 }
+                    // Breathing room so the last card does not butt against
+                    // the bottom of the scroll area.
+                    Item { implicitHeight: 22 }
                 }
             }
         }
@@ -747,7 +813,7 @@ ApplicationWindow {
                     color: root.text
                     font.family: root.uiFont
                     font.pixelSize: 11
-                    renderType: Text.NativeRendering
+                    renderType: Text.QtRendering
                 }
                 HoverHandler { id: retryHover; cursorShape: Qt.PointingHandCursor }
                 TapHandler { onTapped: controller.reconnect() }
@@ -776,7 +842,7 @@ ApplicationWindow {
             color: root.text
             font.family: root.uiFont
             font.pixelSize: 12
-            renderType: Text.NativeRendering
+            renderType: Text.QtRendering
         }
 
         SequentialAnimation {

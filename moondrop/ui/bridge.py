@@ -10,6 +10,7 @@ automatically.
 from __future__ import annotations
 
 import base64
+import math
 import queue
 import threading
 import time
@@ -41,6 +42,9 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     AUDIO_INFO = False
 
+# How much of the top of the scale the level meter shows, in dB.
+METER_RANGE_DB = 30.0
+
 STATUS_POLL_SECONDS = 2.0
 METER_INTERVAL_MS = 40
 FORMAT_INTERVAL_MS = 2000
@@ -58,8 +62,22 @@ class _DeviceWorker(threading.Thread):
         self._dac = DawnPro()
         self._connected = False
 
+        # Volume is latest-value-wins rather than a queue of events: a drag
+        # would otherwise pile up one slow write per step.
+        self._volume_lock = threading.Lock()
+        self._volume_target: Optional[int] = None
+
     def submit(self, command: Callable[[DawnPro], None]) -> None:
         self._commands.put(command)
+
+    def set_volume(self, step: int) -> None:
+        with self._volume_lock:
+            self._volume_target = step
+
+    def _take_volume_target(self) -> Optional[int]:
+        with self._volume_lock:
+            target, self._volume_target = self._volume_target, None
+        return target
 
     def stop(self) -> None:
         self._stop.set()
@@ -97,16 +115,23 @@ class _DeviceWorker(threading.Thread):
                 self._stop.wait(1.0)
                 continue
 
+            volume = self._take_volume_target()
+
             # Idle ticks only read on the poll interval; a write always reads
             # back, so the UI reflects what the device actually accepted.
-            if command is None and time.monotonic() < next_poll:
+            if command is None and volume is None and time.monotonic() < next_poll:
                 continue
 
             try:
+                if volume is not None:
+                    self._dac.set_volume(volume)
                 if command is not None:
                     command(self._dac)
-                self._on_status(self._dac.get_status())
-                next_poll = time.monotonic() + STATUS_POLL_SECONDS
+                # Skip the status read while the user is still dragging --
+                # another target is already waiting.
+                if self._volume_target is None:
+                    self._on_status(self._dac.get_status())
+                    next_poll = time.monotonic() + STATUS_POLL_SECONDS
             except (DeviceNotFound, ProtocolError, OSError, RuntimeError) as exc:
                 self._set_connected(False, str(exc))
 
@@ -133,11 +158,17 @@ class Controller(QObject):
         self._raw = ""
         self._level = 0.0
         self._level_peak = 0.0
+        self._envelope = 0.0
         self._format = ""
         self._device_name = ""
         self._track = Track()
         self._art_uri = ""
         self._info_groups: list = []
+        # Published specs are shown with the diagram rather than as one of the
+        # measured groups, so they are exposed separately.
+        self._spec_rows: list = [
+            {"label": label, "value": value} for label, value in PUBLISHED_SPECS
+        ]
 
         # Probing formats means ~24 WASAPI round trips; keep it off the UI thread.
         threading.Thread(target=self._build_info, daemon=True, name="device-info").start()
@@ -187,10 +218,22 @@ class Controller(QObject):
         self.trackChanged.emit()
 
     def _tick_meter(self) -> None:
-        value = self._meter.read()
-        # Fast attack, slow release: a raw peak reading flickers badly.
-        self._level = value if value > self._level else self._level * 0.82 + value * 0.18
-        self._level_peak = max(value, self._level_peak * 0.97)
+        raw = self._meter.read()
+
+        # Envelope follower: quick to rise, slow to fall, so the bar tracks the
+        # music instead of flickering on every polled block.
+        coefficient = 0.55 if raw > self._envelope else 0.12
+        self._envelope += (raw - self._envelope) * coefficient
+
+        # Plotting the peak linearly pins the bar at full scale, because loud
+        # music really does peak near 0 dBFS almost continuously. Showing the
+        # top METER_RANGE_DB instead gives a meter that moves with the material.
+        if self._envelope > 1e-5:
+            db = 20.0 * math.log10(self._envelope)
+        else:
+            db = -METER_RANGE_DB
+        self._level = max(0.0, min(1.0, (db + METER_RANGE_DB) / METER_RANGE_DB))
+        self._level_peak = max(self._level, self._level_peak * 0.97)
         self.levelChanged.emit()
 
     def _tick_format(self) -> None:
@@ -273,14 +316,6 @@ class Controller(QObject):
                 }
             )
 
-        groups.append(
-            {
-                "title": "Published specifications",
-                "note": "MOONDROP figures · not measured here",
-                "rows": [{"label": label, "value": value} for label, value in PUBLISHED_SPECS],
-            }
-        )
-
         self._info_groups = groups
         self.infoChanged.emit()
 
@@ -312,6 +347,7 @@ class Controller(QObject):
     artUri = Property(str, lambda self: self._art_uri, notify=trackChanged)
 
     infoGroups = Property("QVariantList", lambda self: self._info_groups, notify=infoChanged)
+    specRows = Property("QVariantList", lambda self: self._spec_rows, constant=True)
 
     def _product_image(self) -> str:
         """A photo of the device, if the user dropped one next to the QML."""
@@ -334,7 +370,7 @@ class Controller(QObject):
         # write is in flight, then let the read-back confirm it.
         self._volume = step
         self.changed.emit()
-        self._worker.submit(lambda dac: dac.set_volume(step))
+        self._worker.set_volume(step)
 
     @Slot(int)
     def nudgeVolume(self, delta: int) -> None:

@@ -6,18 +6,21 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QUrl
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
 from .bridge import Controller
 
 QML_DIR = Path(__file__).parent / "qml"
+ICON = Path(__file__).parent / "assets" / "icon.png"
 
 
 def main(argv=None) -> int:
     app = QGuiApplication(list(sys.argv if argv is None else argv))
     app.setApplicationName("Dawn Pro")
     app.setOrganizationName("moondrop-driver")
+    if ICON.exists():
+        app.setWindowIcon(QIcon(str(ICON)))
 
     controller = Controller()
 
