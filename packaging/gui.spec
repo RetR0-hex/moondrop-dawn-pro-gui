@@ -72,7 +72,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="MoondropDawnPro",
+    name="MoondropDawnPro-GUI",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

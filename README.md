@@ -17,8 +17,8 @@ Built and verified against real hardware (USB `2FC6:F06A`).
 
 | File | What it is |
 |------|------------|
-| `MoondropDawnPro.exe` | The GUI. Double-click and go. |
-| `moondrop.exe` | The command line tool. |
+| `MoondropDawnPro-GUI.exe` | The GUI. Double-click and go. |
+| `MoondropDawnPro-CLI.exe` | The command line tool. |
 
 Both are single-file executables: **no Python, no dependencies, no installer.**
 Windows 10 or later, 64-bit.
@@ -68,10 +68,12 @@ Prebuilt executables are attached to every
 [release](https://github.com/RetR0-hex/moondrop-dawn-pro-gui/releases/latest) and need **no Python and no dependencies** on
 the target machine. `build.py` reproduces them locally into `dist/`:
 
-* `dist\MoondropDawnPro.exe` — the GUI, opens with no console window. It carries
-  Qt, so it is the larger of the two.
-* `dist\moondrop.exe` — the command line tool (`moondrop.exe status`,
-  `moondrop.exe gain high`, …). Qt is excluded from this one, so it stays small.
+* `dist\MoondropDawnPro-GUI.exe` — the GUI, opens with no console window. It
+  carries Qt, so it is the larger of the two.
+* `dist\MoondropDawnPro-CLI.exe` — the command line tool
+  (`MoondropDawnPro-CLI.exe status`, `… gain high`, …). Qt is excluded from this
+  one, so it stays small. Rename it to `moondrop.exe` if you want shorter
+  commands — the examples below assume you have.
 
 Double-click `MoondropDawnPro.exe` and it just runs. Both are portable — copy
 them anywhere, or pin `MoondropDawnPro.exe` to the taskbar.
@@ -117,15 +119,6 @@ where the fact came from:
 * *Published specifications* — MOONDROP's own figures, labelled as not measured.
 
 The window is frameless and drag-moves from anywhere in the header.
-
-### Notes on the GUI
-
-* Device I/O runs on a worker thread. A HID round trip is ~100 ms and a status
-  read costs two, so doing it on the Qt thread would visibly stutter the UI.
-* Setting a control updates the display immediately and then reconciles with the
-  value read back from the device, so the slider never snaps backwards mid-drag.
-* To show a photograph instead of the drawing, drop a `dawnpro.png` (or `.jpg` /
-  `.webp`) into `moondrop/ui/assets/` — it takes precedence automatically.
 
 ## Command line
 
@@ -192,12 +185,15 @@ read back off the curve are rounded to the nearest step for display.
 
 Two things worth knowing:
 
-* **Windows also drives this volume.** The DAC's volume is the same one the
-  system volume control moves, so changing system volume — or, as observed here,
-  some playback state changes — will overwrite what you set. This tool sets the
-  device directly; it does not fight the OS for control.
-* **Mind your ears.** `0x00` / step 60 is full output. The driver refuses
-  nothing, so a jump from step 10 to step 60 happens immediately.
+* **This is not the Windows volume.** The device's attenuator and the Windows
+  endpoint volume are independent stages in series — verified by moving each and
+  reading the other: taking Windows from 5% to 70% left the device code at
+  `0x00`, and moving the device from step 30 to 45 left Windows at 5%. Your
+  actual output level is the product of the two, so a quiet result can mean
+  either one is turned down.
+* **Mind your ears.** `0x00` / step 60 is full output on the device's own stage.
+  The driver refuses nothing, so a jump from step 10 to step 60 happens
+  immediately.
 
 ### Gain
 

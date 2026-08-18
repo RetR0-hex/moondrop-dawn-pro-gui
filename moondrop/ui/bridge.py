@@ -37,6 +37,7 @@ try:
     import comtypes
 
     from ..audioinfo import PeakMeter, read_format
+    from ..levelmeter import LoopbackMeter
 
     AUDIO_INFO = True
 except Exception:  # pragma: no cover - optional dependency
@@ -180,8 +181,13 @@ class Controller(QObject):
         self._media.start()
 
         self._meter = None
+        self._loopback = None
         if AUDIO_INFO:
             comtypes.CoInitialize()
+            # RMS of the actual stream; the endpoint peak meter is pinned at
+            # full scale by any modern master and cannot show dynamics.
+            self._loopback = LoopbackMeter()
+            self._loopback.start()
             self._meter = PeakMeter()
 
             self._meter_timer = QTimer(self)
@@ -218,21 +224,21 @@ class Controller(QObject):
         self.trackChanged.emit()
 
     def _tick_meter(self) -> None:
-        raw = self._meter.read()
-
-        # Envelope follower: quick to rise, slow to fall, so the bar tracks the
-        # music instead of flickering on every polled block.
-        coefficient = 0.55 if raw > self._envelope else 0.12
-        self._envelope += (raw - self._envelope) * coefficient
-
-        # Plotting the peak linearly pins the bar at full scale, because loud
-        # music really does peak near 0 dBFS almost continuously. Showing the
-        # top METER_RANGE_DB instead gives a meter that moves with the material.
-        if self._envelope > 1e-5:
-            db = 20.0 * math.log10(self._envelope)
+        if self._loopback is not None and not self._loopback.failed:
+            # Already smoothed and scaled by the capture thread.
+            self._level = self._loopback.level
         else:
-            db = -METER_RANGE_DB
-        self._level = max(0.0, min(1.0, (db + METER_RANGE_DB) / METER_RANGE_DB))
+            # Fallback: the endpoint peak meter. It saturates on loud material,
+            # but it is better than no meter at all.
+            raw = self._meter.read()
+            coefficient = 0.55 if raw > self._envelope else 0.12
+            self._envelope += (raw - self._envelope) * coefficient
+            if self._envelope > 1e-5:
+                db = 20.0 * math.log10(self._envelope)
+            else:
+                db = -METER_RANGE_DB
+            self._level = max(0.0, min(1.0, (db + METER_RANGE_DB) / METER_RANGE_DB))
+
         self._level_peak = max(self._level, self._level_peak * 0.97)
         self.levelChanged.emit()
 
@@ -405,3 +411,5 @@ class Controller(QObject):
     def shutdown(self) -> None:
         self._media.stop()
         self._worker.stop()
+        if self._loopback is not None:
+            self._loopback.stop()

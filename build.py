@@ -5,8 +5,8 @@
 
 Produces two single-file executables in ``dist/``:
 
-    MoondropDawnPro.exe   the GUI, no console window
-    moondrop.exe          the command line tool
+    MoondropDawnPro-GUI.exe   the GUI, no console window
+    MoondropDawnPro-CLI.exe   the command line tool
 
 Neither needs Python or hidapi installed on the target machine.
 """
@@ -48,8 +48,8 @@ CLI_EXTRA = [
 TARGETS = [
     # The GUI is built from a spec so the Qt collection can be filtered; see
     # packaging/gui.spec for why that is necessary.
-    ("MoondropDawnPro", ROOT / "packaging" / "gui.spec", []),
-    ("moondrop", ROOT / "packaging" / "cli_entry.py", CLI_EXTRA),
+    ("MoondropDawnPro-GUI", ROOT / "packaging" / "gui.spec", []),
+    ("MoondropDawnPro-CLI", ROOT / "packaging" / "cli_entry.py", CLI_EXTRA),
 ]
 
 
