@@ -449,6 +449,11 @@ ApplicationWindow {
                         anchors.margins: 16
                         spacing: 8
 
+                        // The slider is drawn by hand, so it does not dim on
+                        // its own the way the pills do.
+                        opacity: controller.connected ? 1.0 : 0.4
+                        Behavior on opacity { NumberAnimation { duration: 150 } }
+
                         SectionTitle { text: "VOLUME" }
 
                         RowLayout {
