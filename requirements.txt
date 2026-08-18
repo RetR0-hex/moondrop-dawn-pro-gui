@@ -1,0 +1,8 @@
+# Core driver (CLI and library)
+hidapi>=0.14
+
+# GUI extras
+PySide6>=6.6
+winsdk>=1.0      # Windows "now playing" media session
+pycaw>=20240210  # audio endpoint format + level meter
+comtypes>=1.2
